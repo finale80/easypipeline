@@ -4,6 +4,8 @@ from easypipe import Stage, Pipeline
 
 from typing import Callable, Any, Sequence
 
+from easypipe.core import make_pipeline
+
 def func_sum(a: float, b: float = 1.0) -> float:
     return a+b
 
@@ -40,14 +42,63 @@ def test_run(
 @pytest.mark.parametrize(
     ", ".join([
         "funcs",
+        "stop_at",
+        "args",
+        "kwargs",
+        "expected"
+    ]),
+    [
+        # no stop_at
+        (
+            (func_sum, func_divide), 
+            None,
+            (1, ), 
+            dict(), 
+            2
+        ),
+        # stop before the first stage (i.e., nothing is run)
+        (
+            (func_sum, func_sum, func_divide), 
+            0,
+            (1, ), 
+            dict(), 
+            None,
+        ),
+        # exclude last stage
+        (
+            (func_sum, func_sum, func_divide), 
+            -1,
+            (1, ), 
+            dict(), 
+            3,
+        )
+    ]
+)
+def test_stop_at(
+    funcs: list[Callable],
+    stop_at: int | None,
+    args: tuple,
+    kwargs: dict,
+    expected: Any
+):
+    p = make_pipeline(*funcs)
+    assert p(*args, stop_at=stop_at, **kwargs) == expected
+
+
+
+@pytest.mark.parametrize(
+    ", ".join([
+        "funcs",
         "args",
         "kwargs",
         "err_msg"
     ]),
     [
         (
-            (func_sum, func_divide_by_zero), (1, ), dict(), 
-            "--> Error at stage#2(func_divide_by_zero)"
+            (func_sum, func_divide_by_zero), 
+            (1, ), 
+            dict(), 
+            "--> Error at stage#1(func_divide_by_zero)"
         )
     ]
 )

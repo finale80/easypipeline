@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Callable, Any
+from typing import Callable, Any, Sequence
 
 import pytest
 import functools
@@ -23,13 +23,13 @@ def func_sum(a, b=0):
     ]
 )
 def test_make_pipeline(
-    funcs: list[Callable],
+    funcs: Sequence[Callable],
     args: tuple,
     kwargs: dict,
     expected: Any
 ):
     p = make_pipeline(*funcs)
-    assert p.run(
+    assert p(
         *args,
         **kwargs
     ) == expected

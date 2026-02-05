@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from typing import Callable, Any, overload, Iterator, Self
+from typing import Callable, Any, overload, Iterator, Self, cast
 
-from collections import OrderedDict
+from collections import OrderedDict, Counter, defaultdict
 from dataclasses import dataclass #, field
 
 # import inspect
@@ -172,6 +172,22 @@ class StageRun:
     runtime: float
 
 
+def validate_key[*Ts](func: Callable[[Pipeline, *Ts], Any]) -> Any:
+    @functools.wraps(func)
+    def wrapper(p: Pipeline, *keys: *Ts) -> Any:
+        for k in keys:
+            if isinstance(k, int):
+                if (
+                    k >= len(p)
+                    or (k < 0 and k < -len(p)) 
+                ):
+                    raise KeyError(f"Stage {k} not available")
+            elif k not in p._dict:
+                raise KeyError(f"Stage {k} not available")
+        return func(p, *keys)
+    return wrapper
+
+
 class Pipeline:
     def __init__(
         self, 
@@ -181,9 +197,16 @@ class Pipeline:
         # progress_multiline: bool = True,
         # progress_reset_elapsed: bool = True,
     ):
+        # if a name is duplicated, then add a suffix _<num> to the name
+        dupnames = Counter([stage.name for stage in stages])
+        cntnames = defaultdict(int)
         self._dict: dict[str, Stage] = OrderedDict()
         for stage in stages:
+            if dupnames[stage.name] > 1:
+                cntnames[stage.name] += 1
+                stage.name += f"_{cntnames[stage.name]}"
             self._dict[stage.name] = stage
+
         self.name = name if name is not None else ""
         self._run_inputs = []
         self._run_outputs = []
@@ -204,9 +227,7 @@ class Pipeline:
         return len(self.stages)
 
     def __getitem__(self, key: int | str) -> Stage:
-        self._validate_key(key)
-        if isinstance(key, int):
-            return self._dict[self.names[key]]
+        key = self._convert_key_to_str(key)
         return self._dict[key]
 
     def __iter__(self) -> Self:
@@ -216,15 +237,19 @@ class Pipeline:
     def __next__(self) -> Stage:
         return next(self._iter_stages)
 
-    def _validate_key(self, key: int | str) -> None:
+    @validate_key
+    def _convert_key_to_int(self, key: int | str) -> int:
         if isinstance(key, int):
-            if key >= len(self):
-                raise KeyError(
-                    f"Cannot access stage {key} as only {len(self)} "
-                    "are registered"
-                )
-        elif key not in self._dict:
-            raise KeyError(f"Cannot access stage {key}")
+            if key >= 0:
+                return key
+            return len(self) + key
+        return self.names.index(key)
+
+    @validate_key
+    def _convert_key_to_str(self, key: int | str) -> str:
+        if isinstance(key, str):
+            return key
+        return self.names[key]
 
     def _run_stage(
         self, 
@@ -263,7 +288,13 @@ class Pipeline:
             res = (res, )
         return res
 
-    def __call__(self, *args, **kwargs) -> Any:
+    def __call__(
+        self, 
+        *args, 
+        stop_at: int | str | None = None,
+        # resume_from: int | str | None = None,
+        **kwargs
+    ) -> Any:
         self._run_inputs = []
         self._run_outputs = []
         self._stages_run = []
@@ -276,12 +307,20 @@ class Pipeline:
         for idx in range(len(self)):
             if self[idx].is_enabled:
                 break
+        # ...and return None if no stage is enabled
         else:
             return None
 
+        if stop_at is not None:
+            stop_at = self._convert_key_to_int(stop_at)
+            if idx >= stop_at:
+                return None
+        else:
+            stop_at = len(self)
+
         # run stages
         next_args = self._run_stage(self.stages[idx], 0, *args, **kwargs)
-        for idx, stage in enumerate(self.stages[idx+1:], start=idx+1):
+        for idx, stage in enumerate(self.stages[idx+1:stop_at], start=idx+1):
             next_args = self._run_stage(stage, idx, *next_args)
 
         if len(next_args) == 1:
@@ -309,43 +348,54 @@ class Pipeline:
 
         data = []
         for key in keys:
-            self._validate_key(key)
-            if isinstance(key, str):
-                key = self.names.index(key)
+            key = self._convert_key_to_int(key)
             run = self._stages_run[key]
             if run.stage.is_enabled:
                 data.append(self._stages_run[key])
         return data
 
     @overload
+    @validate_key
     def enable(self, *keys: int) -> None:
         ...
 
     @overload
+    @validate_key
     def enable(self, *keys: str) -> None:
         ...
 
+    @validate_key
     def enable(self, *keys):
         """Enable specific stages"""
         for k in keys:
-            self._validate_key(k)
+            # self._validate_key(k)
             self[k].is_enabled = True
 
     @overload
+    @validate_key
     def disable(self, *keys: int) -> None:
         ...
 
     @overload
+    @validate_key
     def disable(self, *keys: str) -> None:
         ...
 
+    @validate_key
     def disable(self, *keys):
         """Disable specific stages (or all stages if no key is specified)"""
         if len(keys) == 0:
             keys = range(0, len(self))
         for k in keys:
-            self._validate_key(k)
+            # self._validate_key(k)
             self[k].is_enabled = False
+
+    def __repr__(self) -> str:
+        return "".join([
+            "Pipeline(",
+            ", ".join(map(repr, self.stages)),
+            ")"
+        ])
 
 
 def make_pipeline(
