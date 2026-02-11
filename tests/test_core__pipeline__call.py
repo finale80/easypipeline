@@ -88,6 +88,66 @@ def test_stop_at(
 @pytest.mark.parametrize(
     ", ".join([
         "funcs",
+        "start_from",
+        "args",
+        "kwargs",
+        "expected"
+    ]),
+    [
+        # start from beginning
+        (
+            (func_sum, func_divide), 
+            None,
+            (1, ), 
+            dict(), 
+            2
+        ),
+        (
+            (func_sum, func_divide), 
+            0,
+            (1, ), 
+            dict(), 
+            2
+        ),
+        # start from last stage
+        (
+            (func_sum, func_sum, func_divide), 
+            2,
+            (1, ), 
+            dict(), 
+            1,
+        ),
+        # start from middle
+        (
+            (func_sum, func_sum, func_divide), 
+            1,
+            (1, ), 
+            dict(), 
+            2,
+        ),
+        (
+            (func_sum, func_sum, func_divide), 
+            -2,
+            (1, ), 
+            dict(), 
+            2,
+        )
+    ]
+)
+def test_start_from(
+    funcs: list[Callable],
+    start_from: int | None,
+    args: tuple,
+    kwargs: dict,
+    expected: Any
+):
+    p = make_pipeline(*funcs)
+    assert p(*args, start_from=start_from, **kwargs) == expected
+
+
+@pytest.mark.parametrize(
+    ", ".join([
+        "funcs",
         "stop_at",
         "resume_from",
         "args",
@@ -126,6 +186,13 @@ def test_resume_from(
     p = make_pipeline(*funcs)
     p(*args, stop_at=stop_at, **kwargs)
     assert p(*args, resume_from=resume_from, **kwargs) == expected
+
+    runs = p.get_stages_run()
+    assert len(runs) == len(p)
+    for idx, r in enumerate(runs):
+        assert r is not None
+        assert r.stage.name == p.names[idx]
+
 
 
 @pytest.mark.parametrize(

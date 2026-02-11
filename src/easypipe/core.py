@@ -68,7 +68,7 @@ class StageRun:
     stage: Stage
     inputs: Any
     outputs: Any
-    runtime: float
+    runtime: float = -1.0
 
 
 class Pipeline:
@@ -88,9 +88,9 @@ class Pipeline:
             self._dict[stage.name] = stage
 
         self.name = name if name is not None else ""
-        self._run_inputs = []
-        self._run_outputs = []
-        self._stages_run: list[StageRun] = []
+        self._run_inputs: list[Any] = []
+        self._run_outputs: list[Any] = []
+        self._stages_run: list[StageRun | None] = []
 
     @property
     def stages(self) -> tuple[Stage, ...]:
@@ -135,25 +135,33 @@ class Pipeline:
         *args, 
         **kwargs
     ) -> tuple:
+        def _extend_list(data: list, index: int) -> list:
+            if index < len(data):
+                return data
+            while len(data) <= index:
+                data.append(None)
+            return data
+
+        _extend_list(self._run_inputs, stage_idx)
+        _extend_list(self._run_outputs, stage_idx)
+        _extend_list(self._stages_run, stage_idx)
+
         try:
             if stage_idx == 0:
-                self._run_inputs.insert(stage_idx, (args, kwargs))
+                self._run_inputs[stage_idx] = (args, kwargs)
             else:
-                self._run_inputs.insert(stage_idx, args)
+                self._run_inputs[stage_idx] =args
 
             t1 = time.perf_counter_ns()
             res = stage(*args, **kwargs)
             t2 = time.perf_counter_ns()
 
-            self._run_outputs.insert(stage_idx, res)
-            self._stages_run.insert(
-                stage_idx,
-                StageRun(
-                    stage,
-                    inputs=self._run_inputs[stage_idx],
-                    outputs=self._run_outputs[stage_idx],
-                    runtime=t2-t1,
-                )
+            self._run_outputs[stage_idx] = res
+            self._stages_run[stage_idx] = StageRun(
+                stage,
+                inputs=self._run_inputs[stage_idx],
+                outputs=self._run_outputs[stage_idx],
+                runtime=t2-t1,
             )
 
         except TypeError as e:
@@ -169,7 +177,7 @@ class Pipeline:
         self, 
         *args, 
         stop_at: int | str | None = None,
-        start_at: int | str | None = None,
+        start_from: int | str | None = None,
         resume_from: int | str | None = None,
         **kwargs
     ) -> Any:
@@ -178,21 +186,34 @@ class Pipeline:
         if len(self) == 0:
             return None
 
-        first_stage_idx = 0
+        if start_from is None:
+            start_from = 0
+        else:
+            start_from = cast(int, self._convert_key_to_int(start_from))
+
+        first_stage_idx = start_from
         if resume_from is not None:
             resume_from = cast(int, self._convert_key_to_int(resume_from))
             if resume_from > 0:
                 prev_stage_run = self.get_stages_run(resume_from-1)[0]
                 args = prev_stage_run.outputs
+                if args is None:
+                    args = tuple()
+                elif not isinstance(args, tuple):
+                    args = (args, )
                 kwargs = dict()
                 first_stage_idx = resume_from
+            else:
+                self._run_inputs = []
+                self._run_outputs = []
+                self._stages_run = []
         else:
             self._run_inputs = []
-            self._run_outputs = []
+            self._run_outputs = [] 
             self._stages_run = []
 
             # find first enabled stage
-            for idx in range(len(self)):
+            for idx in range(first_stage_idx, len(self)):
                 if self[idx].is_enabled:
                     break
             # ...and return None if no stage is enabled
@@ -209,6 +230,7 @@ class Pipeline:
 
         # run stages
         _stages = self.stages[first_stage_idx:stop_at]
+
         next_args = self._run_stage(_stages[0], first_stage_idx, *args, **kwargs)
         for idx, stage in enumerate(_stages[1:], start=first_stage_idx+1):
             next_args = self._run_stage(stage, idx, *next_args)
@@ -243,7 +265,7 @@ class Pipeline:
         data = [
             run
             for run in self._stages_run
-            if run.stage.name in keys
+            if run is not None and run.stage.name in keys
         ]
         return data
 
