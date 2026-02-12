@@ -1,7 +1,7 @@
 [project]
 name = "easypipe"
-version = "0.1.0"
-description = "XYZ"
+version = "0.0.1"
+description = "Chaining functions execution made easy"
 readme = "README.md"
 authors = [
     { name = "Alessandro Finamore", email = "mail@afinamore.io" }
@@ -15,8 +15,8 @@ build-backend = "uv_build"
 
 [dependency-groups]
 dev = [
-    "ipython>=9.9.0",
-    "pytest>=9.0.2",
+    "ipython",
+    "pytest",
 ]
 rich = [
     "rich",

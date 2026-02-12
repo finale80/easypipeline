@@ -1,4 +1,4 @@
-A simple package for chaining a sequence of functions
+# easypipe: Chaining functions execution made easy
 
 ```
 from easypipe import make_pipeline
