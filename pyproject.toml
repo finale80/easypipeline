@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "XYZ"
 readme = "README.md"
 authors = [
-    { name = "Alessandro Finamore", email = "finale80@gmail.com" }
+    { name = "Alessandro Finamore", email = "mail@afinamore.io" }
 ]
 requires-python = ">=3.12"
 dependencies = []
@@ -17,4 +17,7 @@ build-backend = "uv_build"
 dev = [
     "ipython>=9.9.0",
     "pytest>=9.0.2",
+]
+rich = [
+    "rich",
 ]
